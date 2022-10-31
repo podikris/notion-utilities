@@ -134,14 +134,48 @@ async function main() {
   // console.log("Got response:", response);
 
   /*************** Read CSV ***************/
+  const transactions = [] as any[];
+  const isUPI = /^UPI/g;
+  const isDebitCard = /^POS/g;
+
   return new Promise((resolve) => {
     fs.createReadStream("./transactions.csv")
-      .pipe(parse({ delimiter: ",", from_line: 2 }))
+      .pipe(
+        parse({
+          delimiter: ",",
+          trim: true,
+          columns: (header: string[]) => {
+            console.log(header);
+
+            const newHeader: string[] = [];
+            header.map((column) => {
+              newHeader.push(column.split(/[\s//]+/).join(""));
+            });
+
+            return newHeader;
+          },
+          from_line: 2,
+          skip_empty_lines: true,
+          cast: (value: any, context: any) => {
+            if (context.header) return value;
+            if (
+              context.column === "DebitAmount" ||
+              context.column === "CreditAmount"
+            )
+              return Number(value);
+            return String(value);
+          },
+        })
+      )
       .on("data", function (row: any) {
-        console.log(row);
+        if (row.Narration.match(isUPI)) row.Mode = "HDFC UPI";
+        else if (row.Narration.match(isDebitCard)) row.Mode = "HDFC DC";
+        else row.Mode = "HDFC SB";
+
+        transactions.push(row);
       })
       .on("end", function () {
-        console.log("finished");
+        console.log(transactions, "finished");
         resolve("resolved");
       })
       .on("error", function (error: any) {

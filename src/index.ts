@@ -1,5 +1,7 @@
 import { Client } from "@notionhq/client";
 import dotenv from "dotenv";
+const fs = require("fs");
+const { parse } = require("csv-parse");
 
 dotenv.config();
 
@@ -114,21 +116,39 @@ async function main() {
     auth: process.env.NOTION_TOKEN,
   });
 
+  /*************** Read Database ***************/
   // const response = await notion.databases.query({
   //   database_id: "38444868ae0d44be85ad18484a8abcb1",
   // });
 
-  const response = await notion.pages.create(
-    new ExpenditureRow(
-      process.env.DATABASE_ID as any,
-      "2022-11-07",
-      11800,
-      "8efd9db0-b592-4bad-8555-e1bd82cc5096",
-      "Q13 Maintainence"
-    ) as any
-  );
+  /*********** Insert row to database ***********/
+  // const response = await notion.pages.create(
+  //   new ExpenditureRow(
+  //     process.env.DATABASE_ID as any,
+  //     "2022-11-07",
+  //     11800,
+  //     "8efd9db0-b592-4bad-8555-e1bd82cc5096",
+  //     "Q13 Maintainence"
+  //   ) as any
+  // );
+  // console.log("Got response:", response);
 
-  console.log("Got response:", response);
+  /*************** Read CSV ***************/
+  return new Promise((resolve) => {
+    fs.createReadStream("./transactions.csv")
+      .pipe(parse({ delimiter: ",", from_line: 2 }))
+      .on("data", function (row: any) {
+        console.log(row);
+      })
+      .on("end", function () {
+        console.log("finished");
+        resolve("resolved");
+      })
+      .on("error", function (error: any) {
+        console.log(error.message);
+        resolve("resolved");
+      });
+  });
 }
 
 main()

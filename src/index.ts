@@ -111,28 +111,24 @@ class ExpenditureRow {
   }
 }
 
-async function main() {
-  const notion = new Client({
-    auth: process.env.NOTION_TOKEN,
-  });
+const EXPENDITURE_MODE = {
+  "HDFC UPI": "8efd9db0-b592-4bad-8555-e1bd82cc5096",
+  "HDFC SB": "5a889dc5-126c-4b42-aaf9-ed98f73056fb",
+  "HDFC DC": "5d7bcf76-d89b-42d3-a3b9-2697ef063e58",
+};
 
-  /*************** Read Database ***************/
-  // const response = await notion.databases.query({
-  //   database_id: "38444868ae0d44be85ad18484a8abcb1",
-  // });
+interface IHDFCTransaction {
+  Date: string;
+  Narration: string;
+  ValueDat: string;
+  DebitAmount: number;
+  CreditAmount: number;
+  ChqRefNumber: string;
+  ClosingBalance: string;
+  Mode: string;
+}
 
-  /*********** Insert row to database ***********/
-  // const response = await notion.pages.create(
-  //   new ExpenditureRow(
-  //     process.env.DATABASE_ID as any,
-  //     "2022-11-07",
-  //     11800,
-  //     "8efd9db0-b592-4bad-8555-e1bd82cc5096",
-  //     "Q13 Maintainence"
-  //   ) as any
-  // );
-  // console.log("Got response:", response);
-
+function readCSV(): Promise<IHDFCTransaction[]> {
   /*************** Read CSV ***************/
   const transactions = [] as any[];
   const isUPI = /^UPI/g;
@@ -163,6 +159,9 @@ async function main() {
               context.column === "CreditAmount"
             )
               return Number(value);
+            if (context.column === "Date")
+              return value.replace(/(\d\d)\/(\d\d)\/(\d\d)/, "20$3-$2-$1");
+
             return String(value);
           },
         })
@@ -175,14 +174,55 @@ async function main() {
         transactions.push(row);
       })
       .on("end", function () {
-        console.log(transactions, "finished");
-        resolve("resolved");
+        console.log("Data loaded from CSV");
+        resolve(transactions);
       })
       .on("error", function (error: any) {
         console.log(error.message);
-        resolve("resolved");
+        resolve([]);
       });
   });
+}
+
+async function main() {
+  const notion = new Client({
+    auth: process.env.NOTION_TOKEN,
+  });
+
+  /*************** Read Database ***************/
+  // const response = await notion.databases.query({
+  //   database_id: "38444868ae0d44be85ad18484a8abcb1",
+  // });
+
+  /*********** Insert row to database ***********/
+  // const response = await notion.pages.create(
+  //   new ExpenditureRow(
+  //     process.env.DATABASE_ID as any,
+  //     "2022-11-07",
+  //     11800,
+  //     "8efd9db0-b592-4bad-8555-e1bd82cc5096",
+  //     "Q13 Maintainence"
+  //   ) as any
+  // );
+  // console.log("Got response:", response);
+
+  /*********** Insert row to database ***********/
+  const transactions = await readCSV();
+  await Promise.all(
+    transactions.map((transaction: IHDFCTransaction) =>
+      notion.pages.create(
+        new ExpenditureRow(
+          process.env.DATABASE_ID as any,
+          transaction.Date,
+          transaction.DebitAmount,
+          EXPENDITURE_MODE[transaction.Mode as keyof typeof EXPENDITURE_MODE],
+          transaction.Narration
+        ) as any
+      )
+    )
+  );
+
+  console.log("Pushed all transactions");
 }
 
 main()

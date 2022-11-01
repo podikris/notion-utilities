@@ -84,13 +84,21 @@ class NotionTitle extends NotionDataType {
 
 class TransactionsTable {
   Date: NotionDate;
-  Amount: NotionNumber;
+  Spent: NotionNumber;
+  Income: NotionNumber;
   Mode: NotionSelect;
   Transact: NotionTitle;
 
-  constructor(startDate: string, amount: number, mode: string, title: string) {
+  constructor(
+    startDate: string,
+    spent: number,
+    income: number,
+    mode: string,
+    title: string
+  ) {
     this.Date = new NotionDate(startDate);
-    this.Amount = new NotionNumber(amount);
+    this.Spent = new NotionNumber(spent);
+    this.Income = new NotionNumber(income);
     this.Mode = new NotionSelect(mode);
     this.Transact = new NotionTitle(title);
   }
@@ -105,12 +113,13 @@ class ExpenditureRow {
   constructor(
     database_id: string,
     date: string,
-    amount: number,
+    spent: number,
+    income: number,
     mode: string,
     title: string
   ) {
     this.parent = { database_id };
-    this.properties = new TransactionsTable(date, amount, mode, title);
+    this.properties = new TransactionsTable(date, spent, income, mode, title);
   }
 }
 
@@ -167,7 +176,6 @@ function readCSV(): Promise<IHDFCTransaction[]> {
 
             return newHeader;
           },
-          from_line: 2,
           skip_empty_lines: true,
           cast: (value: any, context: any) => {
             if (context.header) return value;
@@ -183,7 +191,7 @@ function readCSV(): Promise<IHDFCTransaction[]> {
           },
         })
       )
-      .on("data", function (row: any) {
+      .on("data", function (row: IHDFCTransaction) {
         if (row.Narration.match(isUPI)) row.Mode = "HDFC UPI";
         else if (row.Narration.match(isDebitCard)) row.Mode = "HDFC DC";
         else row.Mode = "HDFC SB";
@@ -233,12 +241,14 @@ async function main() {
         process.env.DATABASE_ID as any,
         transaction.Date,
         transaction.DebitAmount,
+        transaction.CreditAmount,
         EXPENDITURE_MODE[transaction.Mode as keyof typeof EXPENDITURE_MODE],
         transaction.Narration
       )
     )
   );
 
+  console.log("Uploading transactions to Notion");
   await createPages(notion, expenditureRows, OPERATION_BATCH_SIZE);
 
   console.log("Pushed all transactions");

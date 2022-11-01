@@ -2,8 +2,11 @@ import { Client } from "@notionhq/client";
 import dotenv from "dotenv";
 const fs = require("fs");
 const { parse } = require("csv-parse");
+const _ = require("lodash");
 
 dotenv.config();
+
+const OPERATION_BATCH_SIZE = 10;
 
 class NotionDataType {
   type: string;
@@ -128,6 +131,22 @@ interface IHDFCTransaction {
   Mode: string;
 }
 
+async function createPages(
+  notion: any,
+  pagesToCreate: ExpenditureRow[],
+  batchSize: number
+) {
+  const pagesToCreateChunks = _.chunk(pagesToCreate, batchSize);
+  for (const pagesToCreateBatch of pagesToCreateChunks) {
+    await Promise.all(
+      pagesToCreateBatch.map((page: ExpenditureRow) =>
+        notion.pages.create(page)
+      )
+    );
+    console.log(`Completed batch size: ${pagesToCreateBatch.length}`);
+  }
+}
+
 function readCSV(): Promise<IHDFCTransaction[]> {
   /*************** Read CSV ***************/
   const transactions = [] as any[];
@@ -141,8 +160,6 @@ function readCSV(): Promise<IHDFCTransaction[]> {
           delimiter: ",",
           trim: true,
           columns: (header: string[]) => {
-            console.log(header);
-
             const newHeader: string[] = [];
             header.map((column) => {
               newHeader.push(column.split(/[\s//]+/).join(""));
@@ -208,19 +225,21 @@ async function main() {
 
   /*********** Insert row to database ***********/
   const transactions = await readCSV();
-  await Promise.all(
-    transactions.map((transaction: IHDFCTransaction) =>
-      notion.pages.create(
-        new ExpenditureRow(
-          process.env.DATABASE_ID as any,
-          transaction.Date,
-          transaction.DebitAmount,
-          EXPENDITURE_MODE[transaction.Mode as keyof typeof EXPENDITURE_MODE],
-          transaction.Narration
-        ) as any
+  const expenditureRows: ExpenditureRow[] = [];
+
+  transactions.map((transaction: IHDFCTransaction) =>
+    expenditureRows.push(
+      new ExpenditureRow(
+        process.env.DATABASE_ID as any,
+        transaction.Date,
+        transaction.DebitAmount,
+        EXPENDITURE_MODE[transaction.Mode as keyof typeof EXPENDITURE_MODE],
+        transaction.Narration
       )
     )
   );
+
+  await createPages(notion, expenditureRows, OPERATION_BATCH_SIZE);
 
   console.log("Pushed all transactions");
 }
